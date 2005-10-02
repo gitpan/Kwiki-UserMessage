@@ -1,7 +1,7 @@
 package Kwiki::UserMessage;
 use Kwiki::Plugin qw(-Base -XXX);
 use mixin 'Kwiki::Installer';
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 const class_id    => 'user_message';
 const class_title => 'Kwiki User Message';
@@ -40,18 +40,35 @@ sub list {}
 sub compose {}
 
 sub delete {
-    my $id = $self->cgi->id;
+    my $id = shift || $self->cgi->id;
     $self->delete_message($id) if $id;
+
+    my $obj = $self->cdbi->retrieve($id);
+    $obj->delete if $obj;
 }
 
 sub post {
-    if($self->post_message($self->users->current->name,
-			   $self->cgi->to,
-			   $self->cgi->subject,
-			   $self->cgi->body)) {
-	$self->display_msg("Message Delivered");
+    my $caller_sub = (caller(1))[3];
+    if($caller_sub eq 'Kwiki::UserMessage::user_message') {
+	if($self->post($self->users->current->name,
+		       $self->cgi->to,
+		       $self->cgi->subject,
+		       $self->cgi->body)) {
+	    $self->display_msg("Message Delivered");
+	} else {
+	    $self->display_msg("Delivery Error");
+	}
     } else {
-	$self->display_msg("Delivery Error");
+	my ($sender,$receiver,$subject,$body) = @_;
+	my $vars = {
+		    id => $self->cdbi->maximum_value_of("id")||0 + 1,
+		    sender => $sender,
+		    receiver => $receiver,
+		    subject => $subject,
+		    body => $body,
+		    ts => scalar(localtime)
+		   };
+	$self->cdbi->create($vars);
     }
 }
 
@@ -60,25 +77,6 @@ sub message_list {
     my $it = $self->cdbi->search( receiver => $user );
     my @obj = $self->retrieve_obj_list($it);
     return \@obj;
-}
-
-sub post_message {
-    my ($sender,$receiver,$subject,$body) = @_;
-    my $vars = {
-		id => $self->cdbi->maximum_value_of("id")||0 + 1,
-		sender => $sender,
-		receiver => $receiver,
-		subject => $subject,
-		body => $body,
-		ts => scalar(localtime)
-	       };
-    $self->cdbi->create($vars);
-}
-
-sub delete_message {
-    my $id = shift;
-    my $obj = $self->cdbi->retrieve($id);
-    $obj->delete if $obj;
 }
 
 sub load_message {
